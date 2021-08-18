@@ -203,7 +203,7 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 	/** Flag that indicates whether this context has been closed already. */
 	private final AtomicBoolean closed = new AtomicBoolean();
 
-	/** Synchronization monitor for the "refresh" and "destroy". */
+	/** 启动和销毁时的锁对象 */
 	private final Object startupShutdownMonitor = new Object();
 
 	/** Reference to the JVM shutdown hook, if registered. */
@@ -541,15 +541,34 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 		return this.applicationListeners;
 	}
 
+	/**
+	 * 核心方法
+	 * Spring 应用上下文的刷新,让 Spring 应用上下文处于准备就绪状态
+	 * @throws BeansException
+	 * @throws IllegalStateException
+	 */
 	@Override
 	public void refresh() throws BeansException, IllegalStateException {
+		/**
+		 * <1> 加锁,目的防止refresh()还未结束,又进行启动或销毁容器的操作
+		 */
 		synchronized (this.startupShutdownMonitor) {
 			StartupStep contextRefresh = this.applicationStartup.start("spring.context.refresh");
 
-			// Prepare this context for refreshing.
+			/**
+			 * <2> 准备工作
+			 * 1.刷新上下文环境的准备工作
+			 * 2.记录容器的启动时间
+			 * 3.标记“已启动”状态
+			 * 4.对上下文环境属性进行校验
+			 */
 			prepareRefresh();
 
-			// Tell the subclass to refresh the internal bean factory.
+			/**
+			 * <3> 创建BeanFactory对象
+			 * 1.创建并初始化一个 BeanFactory 对象 `beanFactory`
+			 * 2.加载出对应的 BeanDefinition 元信息们
+ 			 */
 			ConfigurableListableBeanFactory beanFactory = obtainFreshBeanFactory();
 
 			// Prepare the bean factory for use in this context.
