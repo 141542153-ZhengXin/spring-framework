@@ -907,6 +907,19 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 		return (this.configurationFrozen || super.isBeanEligibleForMetadataCaching(beanName));
 	}
 
+	/**
+	 * 遍历所以的 beanName,如果该 Bean 的定义满足下面三个条件,则进行初始化过程
+	 * 	不是抽象
+	 * 	单例模式
+	 * 	不是懒加载方式
+	 * 实际就是通过 getBean(String beanName) 方法进行初始化。
+	 * 注意，如果是 FactoryBean 类型的 Bean，需要先初始化 FactoryBean 本身这个 Bean,
+	 * beanName 前面加 &,然后再初始化这个 beanName,也就是调用 FactoryBean#getObject() 方法
+	 *
+	 * 在初始化所有的 Bean 后,其实还有一个初始化完成阶段,会遍历所有已初始化好的 Bean,
+	 * 如果是 SmartInitializingSingleton 类型,则调用这个 Bean 的 afterSingletonsInstantiated() 方法
+	 *
+	 */
 	@Override
 	public void preInstantiateSingletons() throws BeansException {
 		if (logger.isTraceEnabled()) {
@@ -915,14 +928,22 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 
 		// Iterate over a copy to allow for init methods which in turn register new bean definitions.
 		// While this may not be part of the regular factory bootstrap, it does otherwise work fine.
+		// 复制一份本地的所有 beanNames 集合
 		List<String> beanNames = new ArrayList<>(this.beanDefinitionNames);
 
 		// Trigger initialization of all non-lazy singleton beans...
+		// 遍历所有的 beanName
 		for (String beanName : beanNames) {
+			// 从容器中获取 beanName 相应的 RootBeanDefinition 对象
 			RootBeanDefinition bd = getMergedLocalBeanDefinition(beanName);
+			// 如果该 Bean 的定义为:不是抽象、单例模式、不是懒加载方式,则进行初始化
 			if (!bd.isAbstract() && bd.isSingleton() && !bd.isLazyInit()) {
+				// 如果是 FactoryBean 类型的 Bean
 				if (isFactoryBean(beanName)) {
+					// 初始化 FactoryBean 类型本身这个 Bean,注意这里在 beanName 的前面添加了一个 '&'
 					Object bean = getBean(FACTORY_BEAN_PREFIX + beanName);
+					// 如果这个 FactoryBean 为 SmartFactoryBean 类型,并且需要提前初始化
+					// 则初始 beanName 对应的 Bean,也就是调用 FactoryBean 的 getObject() 方法
 					if (bean instanceof FactoryBean) {
 						FactoryBean<?> factory = (FactoryBean<?>) bean;
 						boolean isEagerInit;
@@ -941,6 +962,7 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 					}
 				}
 				else {
+					// 初始化 beanName 对应的 Bean
 					getBean(beanName);
 				}
 			}
@@ -960,6 +982,15 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 					}, getAccessControlContext());
 				}
 				else {
+					/**
+					 * SmartInitializingSingleton 的作用？
+					 * 	通过 getBean(beanName) 初始化一个 Bean 的时候也会初始化依赖的对象,
+					 * 	这样可能会出现过早的初始化问题（例如可能有些 BeanPostProcessor 还未添加进来就初始化了）,
+					 * 	导致相关 Bean 可能还未完全初始化,Spring 4.1 之后就提供了 SmartInitializingSingleton 接口机制让你可以确保 Bean 的初始化行为比较正常。
+					 *
+					 * 	还有就是在所有的 Bean 完成初始化后,可以在这里进行注解的相关处理,例如 @EventListener 注解就是通过 EventListenerMethodProcessor 实现的,
+					 * 	会将@EventListener 注解标注的方法解析成 ApplicationListener 事件监听器,并注册至 Spring 应用上下文。
+					 */
 					smartSingleton.afterSingletonsInstantiated();
 				}
 				smartInitialize.end();
